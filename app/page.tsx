@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import Court from '../Components/Court';
-import WaitingQueue from '../Components/WaitingQueue';
-import AttendanceList from '../Components/AttendanceList';
+import Court from '../components/Court';
+import WaitingQueue from '../components/WaitingQueue';
+import AttendanceList from '../components/AttendanceList';
 
 interface Player {
   name: string;
@@ -12,73 +12,48 @@ interface Player {
   queueOrder: number;
 }
 
-interface CourtState {
-  courtNumber: number;
-  players: string[];
-  status: 'active' | 'empty';
-}
-
-interface MatchRecord {
+interface Match {
   id: string;
-  courtNumber: number;
-  winners: string[];
-  losers: string[];
-  score: string;
-  timestamp: number;
+  players: string[];
+  startTime: number;
 }
 
-interface HistorySnapshot {
-  attendance: Player[];
-  courts: CourtState[];
-  orderCounter: number;
-  activeCourtNumbers: number[];
-  stagedMatch: string[];
+interface CourtType {
+  id: number;
+  name: string;
+  currentMatch: Match | null;
 }
 
 export default function Home() {
+  // --- STATE ---
   const [attendance, setAttendance] = useState<Player[]>([]);
-  const [orderCounter, setOrderCounter] = useState(1);
-  const [isHydrated, setIsHydrated] = useState(false);
-
-  const [activeCourtNumbers, setActiveCourtNumbers] = useState<number[]>([1, 2, 3]); 
-  const [courts, setCourts] = useState<CourtState[]>([
-    { courtNumber: 1, players: [], status: 'empty' },
-    { courtNumber: 2, players: [], status: 'empty' },
-    { courtNumber: 3, players: [], status: 'empty' },
-    { courtNumber: 4, players: [], status: 'empty' },
+  const [courts, setCourts] = useState<CourtType[]>([
+    { id: 1, name: 'Court 1', currentMatch: null },
+    { id: 2, name: 'Court 2', currentMatch: null },
+    { id: 3, name: 'Court 3', currentMatch: null },
+    { id: 4, name: 'Court 4', currentMatch: null },
   ]);
-
-  const [stagedMatch, setStagedMatch] = useState<string[]>([]);
-  const [history, setHistory] = useState<HistorySnapshot[]>([]);
-  const [matches, setMatches] = useState<MatchRecord[]>([]);
   const [newPlayerName, setNewPlayerName] = useState('');
-  const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
-  
-  const [isAutoDriveActive, setIsAutoDriveActive] = useState(false);
-  const isProcessingAutoDrive = useRef(false);
+  const [orderCounter, setOrderCounter] = useState(1);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // --- STORAGE SYNCHRONIZERS ---
+  // --- 1. INITIAL MOUNT: LOAD FROM LOCALSTORAGE ---
   useEffect(() => {
     const savedAttendance = localStorage.getItem('b_attendance');
     const savedCourts = localStorage.getItem('b_courts');
-    const savedCounter = localStorage.getItem('b_counter');
-    const savedActiveNums = localStorage.getItem('b_active_nums');
-    const savedHistory = localStorage.getItem('b_history');
-    const savedStaged = localStorage.getItem('b_staged');
-    const savedMatches = localStorage.getItem('b_matches');
-    const savedAutoDrive = localStorage.getItem('b_autodrive');
+    const savedCounter = localStorage.getItem('b_order_counter');
 
     if (savedAttendance) {
       const parsedAttendance = JSON.parse(savedAttendance);
       setAttendance(parsedAttendance);
       
-      // Dynamically find the highest queue order or default to the list length + 1
       if (savedCounter) {
         setOrderCounter(parseInt(savedCounter, 10));
       } else {
         setOrderCounter(parsedAttendance.length + 1);
       }
     } else {
+      // Default fallback starter roster
       const defaultPlayers: Player[] = [
         { name: 'Dave', status: 'available', queueOrder: 1 },
         { name: 'Sarah', status: 'available', queueOrder: 2 },
@@ -92,523 +67,277 @@ export default function Home() {
       ];
       setAttendance(defaultPlayers);
       localStorage.setItem('b_attendance', JSON.stringify(defaultPlayers));
-      setOrderCounter(10); // set to a safe number higher than the default roster size
+      setOrderCounter(10);
     }
 
-    if (savedCourts) setCourts(JSON.parse(savedCourts));
-    if (savedCounter) setOrderCounter(parseInt(savedCounter, 10));
-    if (savedActiveNums) setActiveCourtNumbers(JSON.parse(savedActiveNums));
-    if (savedHistory) setHistory(JSON.parse(savedHistory));
-    if (savedStaged) setStagedMatch(JSON.parse(savedStaged));
-    if (savedMatches) setMatches(JSON.parse(savedMatches));
-    if (savedAutoDrive) setIsAutoDriveActive(JSON.parse(savedAutoDrive));
+    if (savedCourts) {
+      setCourts(JSON.parse(savedCourts));
+    }
 
-    setIsHydrated(true);
+    setIsInitialLoad(false);
   }, []);
 
+  // --- 2. SAVE ON STATE CHANGES ---
   useEffect(() => {
-    if (!isHydrated) return;
+    if (isInitialLoad) return;
     localStorage.setItem('b_attendance', JSON.stringify(attendance));
+  }, [attendance, isInitialLoad]);
+
+  useEffect(() => {
+    if (isInitialLoad) return;
     localStorage.setItem('b_courts', JSON.stringify(courts));
-    localStorage.setItem('b_counter', orderCounter.toString());
-    localStorage.setItem('b_active_nums', JSON.stringify(activeCourtNumbers));
-    localStorage.setItem('b_history', JSON.stringify(history));
-    localStorage.setItem('b_staged', JSON.stringify(stagedMatch));
-    localStorage.setItem('b_matches', JSON.stringify(matches));
-    localStorage.setItem('b_autodrive', JSON.stringify(isAutoDriveActive));
-  }, [attendance, courts, orderCounter, activeCourtNumbers, history, stagedMatch, matches, isAutoDriveActive, isHydrated]);
+  }, [courts, isInitialLoad]);
 
+  useEffect(() => {
+    if (isInitialLoad) return;
+    localStorage.setItem('b_order_counter', orderCounter.toString());
+  }, [orderCounter, isInitialLoad]);
 
-  // --- ENGINE UTILITIES ---
-  const waitingQueue = attendance
-    .filter(p => p.status === 'available' || p.status === 'resting')
-    .sort((a, b) => {
-      if (a.status === 'available' && b.status === 'resting') return -1;
-      if (a.status === 'resting' && b.status === 'available') return 1;
-      return a.queueOrder - b.queueOrder;
-    })
+  // --- DERIVED WAITING QUEUE ---
+  const queue = attendance
+    .filter(p => p.status === 'available')
+    .sort((a, b) => a.queueOrder - b.queueOrder)
     .map(p => p.name);
-
-  const emptyActiveCourtNumbers = courts
-    .filter(c => activeCourtNumbers.includes(c.courtNumber) && c.status === 'empty')
-    .map(c => c.courtNumber);
-
-  const saveToHistory = (
-    currAttendance = attendance, 
-    currCourts = courts, 
-    currCounter = orderCounter, 
-    currNums = activeCourtNumbers,
-    currStaged = stagedMatch
-  ) => {
-    const snapshot: HistorySnapshot = {
-      attendance: JSON.parse(JSON.stringify(currAttendance)),
-      courts: JSON.parse(JSON.stringify(currCourts)),
-      orderCounter: currCounter,
-      activeCourtNumbers: [...currNums],
-      stagedMatch: [...currStaged]
-    };
-    setHistory(prev => [snapshot, ...prev].slice(0, 10));
-  };
-
-  const handleUndo = () => {
-    if (history.length === 0) return;
-    const [nextTargetState, ...remainingHistory] = history;
-
-    setAttendance(nextTargetState.attendance);
-    setCourts(nextTargetState.courts);
-    setOrderCounter(nextTargetState.orderCounter);
-    setActiveCourtNumbers(nextTargetState.activeCourtNumbers);
-    setStagedMatch(nextTargetState.stagedMatch || []);
-    setHistory(remainingHistory);
-    setSelectedPlayers([]);
-  };
-
-
-  // --- SELECTION CONTROL ---
-  const handleSelectPlayerFromQueue = (playerName: string) => {
-    if (waitingQueue.length === 0 || isAutoDriveActive) return;
-    const topPlayer = waitingQueue[0];
-
-    setSelectedPlayers(prev => {
-      if (prev.length === 0) {
-        if (playerName === topPlayer) return [topPlayer];
-        return [topPlayer, playerName];
-      }
-      if (prev.includes(playerName)) {
-        if (playerName === topPlayer) return prev; 
-        return prev.filter(n => n !== playerName);
-      }
-      if (prev.length >= 4) return prev;
-      return [...prev, playerName];
-    });
-  };
-
 
   // --- AUTO-DRIVE BACKGROUND ENGINE LOOP ---
   useEffect(() => {
-    if (!isHydrated || !isAutoDriveActive || isProcessingAutoDrive.current) return;
+    if (isInitialLoad) return;
 
-    const extractNextAutoPickGroup = (currentQueueList: string[], countNeeded: number = 4): string[] | null => {
-      if (currentQueueList.length < 8) return null; 
-      
-      const pickerCandidate = currentQueueList[0];
-      const surroundingCandidates = currentQueueList.slice(1, 8);
-      const randomizedPool = [...surroundingCandidates].sort(() => 0.5 - Math.random());
-      
-      return [pickerCandidate, ...randomizedPool.slice(0, countNeeded - 1)];
-    };
+    const timer = setInterval(() => {
+      setCourts(prevCourts => {
+        const vacantCourtIndex = prevCourts.findIndex(c => c.currentMatch === null);
+        if (vacantCourtIndex === -1) return prevCourts;
 
-    let localAttendance = [...attendance];
-    let localCourts = [...courts];
-    let localStagedMatch = [...stagedMatch];
-    let stateModified = false;
+        let currentQueueList = attendance
+          .filter(p => p.status === 'available')
+          .sort((a, b) => a.queueOrder - b.queueOrder)
+          .map(p => p.name);
 
-    // 1. Send fully staged match to court if one is empty
-    let openCourts = localCourts.filter(c => activeCourtNumbers.includes(c.courtNumber) && c.status === 'empty');
-    if (openCourts.length > 0 && localStagedMatch.length === 4) {
-      const targetCourt = openCourts[0];
-      localCourts = localCourts.map(c => c.courtNumber === targetCourt.courtNumber ? { ...c, players: localStagedMatch, status: 'active' } : c);
-      localStagedMatch = [];
-      stateModified = true;
-    }
-
-    const getWorkingQueue = (workingAttendance: Player[]) => {
-      return workingAttendance
-        .filter(p => p.status === 'available' || p.status === 'resting')
-        .sort((a, b) => {
-          if (a.status === 'available' && b.status === 'resting') return -1;
-          if (a.status === 'resting' && b.status === 'available') return 1;
-          return a.queueOrder - b.queueOrder;
-        })
-        .map(p => p.name);
-    };
-
-    // 2. Clear out any open empty courts directly from queue first
-    openCourts = localCourts.filter(c => activeCourtNumbers.includes(c.courtNumber) && c.status === 'empty');
-    while (openCourts.length > 0) {
-      const activeQueue = getWorkingQueue(localAttendance);
-      const generatedMatchGroup = extractNextAutoPickGroup(activeQueue, 4);
-
-      if (!generatedMatchGroup) break;
-
-      const targetCourt = openCourts.shift()!;
-      localCourts = localCourts.map(c => c.courtNumber === targetCourt.courtNumber ? { ...c, players: generatedMatchGroup, status: 'active' } : c);
-      localAttendance = localAttendance.map(p => generatedMatchGroup.includes(p.name) ? { ...p, status: 'playing' } : p);
-      stateModified = true;
-    }
-
-    // 3. Fill or rebuild incomplete/empty staging lane slots
-    if (localStagedMatch.length < 4) {
-      const activeQueue = getWorkingQueue(localAttendance);
-      
-      if (localStagedMatch.length === 0) {
-        const generatedMatchGroup = extractNextAutoPickGroup(activeQueue, 4);
-        if (generatedMatchGroup) {
-          localStagedMatch = generatedMatchGroup;
-          localAttendance = localAttendance.map(p => generatedMatchGroup.includes(p.name) ? { ...p, status: 'playing' } : p);
-          stateModified = true;
-        }
-      } 
-      else if (activeQueue.length > 0) {
-        const spacesToFill = 4 - localStagedMatch.length;
-        const fillingCandidates = activeQueue.slice(0, spacesToFill);
-        
-        localStagedMatch = [...localStagedMatch, ...fillingCandidates];
-        localAttendance = localAttendance.map(p => fillingCandidates.includes(p.name) ? { ...p, status: 'playing' } : p);
-        stateModified = true;
-      }
-    }
-
-    if (stateModified) {
-      isProcessingAutoDrive.current = true;
-      saveToHistory();
-      setAttendance(localAttendance);
-      setCourts(localCourts);
-      setStagedMatch(localStagedMatch);
-      setSelectedPlayers([]);
-      setTimeout(() => { isProcessingAutoDrive.current = false; }, 50);
-    }
-
-  }, [attendance, courts, stagedMatch, isAutoDriveActive, activeCourtNumbers, isHydrated]);
-
-
-  // --- CORE MASTER ROSTER TOGGLES & HANDLERS ---
-
-  const handleToggleRestState = (name: string) => {
-    saveToHistory();
-    
-    const isStaged = stagedMatch.includes(name);
-    const isOnCourt = courts.some(c => c.status === 'active' && c.players.includes(name));
-
-    setAttendance(prev => prev.map(p => {
-      if (p.name !== name) return p;
-      
-      // If playing live on court, flag to 'resting' without losing their current position
-      if (isOnCourt) {
-        return {
-          ...p,
-          status: p.status === 'resting' ? 'playing' : 'resting'
+        const extractNextAutoPickGroup = (currentQueueList: string[], countNeeded: number = 4): string[] | null => {
+          if (currentQueueList.length < 8) return null; // Safe gate for optimal Thursday shuffling
+          
+          const pickerCandidate = currentQueueList[0];
+          const surroundingCandidates = currentQueueList.slice(1, Math.min(8, currentQueueList.length));
+          const randomizedPool = [...surroundingCandidates].sort(() => 0.5 - Math.random());
+          
+          return [pickerCandidate, ...randomizedPool.slice(0, countNeeded - 1)];
         };
-      }
 
-      // Normal toggle if available or waiting on deck
-      const currentIsAvailableOrStaged = p.status === 'available' || p.status === 'playing';
-      return {
-        ...p,
-        status: currentIsAvailableOrStaged ? 'resting' : 'available'
-      };
-    }));
+        const chosenFour = extractNextAutoPickGroup(currentQueueList, 4);
+        if (!chosenFour) return prevCourts;
 
-    // Instantly pull them if they were waiting on deck
-    if (isStaged) {
-      setStagedMatch(prev => prev.filter(pName => pName !== name));
-    }
-  };
+        // Update player states immediately
+        setAttendance(prevAttendance => 
+          prevAttendance.map(p => 
+            chosenFour.includes(p.name) ? { ...p, status: 'playing' } : p
+          )
+        );
 
-  const handleToggleAttendance = (name: string) => {
-    saveToHistory();
-    let localCounter = orderCounter;
-    const isStaged = stagedMatch.includes(name);
+        const updatedCourts = [...prevCourts];
+        updatedCourts[vacantCourtIndex] = {
+          ...updatedCourts[vacantCourtIndex],
+          currentMatch: {
+            id: Math.random().toString(36).substring(2, 9),
+            players: chosenFour,
+            startTime: Date.now()
+          }
+        };
 
-    setAttendance(prev => prev.map(p => {
-      if (p.name !== name) return p;
-      const transitioningToHere = p.status === 'absent';
-      return {
-        ...p,
-        status: transitioningToHere ? 'available' : 'absent',
-        queueOrder: transitioningToHere ? localCounter++ : 999
-      };
-    }));
+        return updatedCourts;
+      });
 
-    if (isStaged) {
-      setStagedMatch(prev => prev.filter(pName => pName !== name));
-    }
-    if (selectedPlayers.includes(name)) {
-      setSelectedPlayers(prev => prev.filter(n => n !== name));
-    }
-    setOrderCounter(localCounter);
-  };
+    }, 3000);
 
-  const handleDeletePlayer = (name: string) => {
-    saveToHistory();
-    setAttendance(prev => prev.filter(p => p.name !== name));
-    setSelectedPlayers(prev => prev.filter(n => n !== name));
-    setStagedMatch(prev => prev.filter(n => n !== name));
-    setCourts(prev => prev.map(c => ({ ...c, players: c.players.filter(n => n !== name) })));
-  };
+    return () => clearInterval(timer);
+  }, [attendance, isInitialLoad]);
 
-  const handleDeployToStaging = () => {
-    if (selectedPlayers.length < 2 || stagedMatch.length > 0 || isAutoDriveActive) return;
-    saveToHistory();
-
-    setStagedMatch(selectedPlayers);
-    setAttendance(prev => prev.map(p => selectedPlayers.includes(p.name) ? { ...p, status: 'playing' } : p));
-    setSelectedPlayers([]);
-
-    const freeCourt = courts.find(c => activeCourtNumbers.includes(c.courtNumber) && c.status === 'empty');
-    if (freeCourt) {
-      setCourts(prev => prev.map(c => c.courtNumber === freeCourt.courtNumber ? { ...c, players: selectedPlayers, status: 'active' } : c));
-      setStagedMatch([]); 
-    }
-  };
-
-  const handleDeployDirectlyToCourt = (courtNum: number) => {
-    if (selectedPlayers.length < 2 || isAutoDriveActive) return;
-    saveToHistory();
-
-    setCourts(prev => prev.map(c => c.courtNumber === courtNum ? { ...c, players: selectedPlayers, status: 'active' } : c));
-    setAttendance(prev => prev.map(p => selectedPlayers.includes(p.name) ? { ...p, status: 'playing' } : p));
-    setSelectedPlayers([]);
-  };
-
-  const handleClearStagingLane = () => {
-    if (stagedMatch.length === 0 || isAutoDriveActive) return;
-    saveToHistory();
-    setAttendance(prev => prev.map(p => stagedMatch.includes(p.name) ? { ...p, status: 'available' } : p));
-    setStagedMatch([]);
-  };
-
-  const handleCheckOutAllMembers = () => {
-    saveToHistory();
-    setIsAutoDriveActive(false);
-    setAttendance(prev => prev.map(p => ({ ...p, status: 'absent', queueOrder: 999 })));
-    setCourts(prev => prev.map(c => ({ ...c, players: [], status: 'empty' })));
-    setStagedMatch([]);
-    setSelectedPlayers([]);
-    setOrderCounter(1);
-  };
-
+  // --- HANDLERS ---
   const handleAddPlayerToMasterRoster = (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = newPlayerName.trim();
-    if (!clean || attendance.some(p => p.name.toLowerCase() === clean.toLowerCase())) return;
-    
-    saveToHistory();
-    setAttendance(prev => [...prev, { name: clean, status: 'absent', queueOrder: 999 }]); 
+    const cleanName = newPlayerName.trim();
+    if (!cleanName) return;
+
+    if (attendance.some(p => p.name.toLowerCase() === cleanName.toLowerCase())) {
+      alert("A player with that name already exists!");
+      return;
+    }
+
+    const newPlayer: Player = {
+      name: cleanName,
+      status: 'available',
+      queueOrder: orderCounter
+    };
+
+    setAttendance(prev => [...prev, newPlayer]);
+    setOrderCounter(prev => prev + 1);
     setNewPlayerName('');
   };
 
-  const handleActivateCourtSlot = (num: number) => {
-    saveToHistory();
-    setActiveCourtNumbers(prev => [...prev, num].sort((a, b) => a - b));
-
-    if (stagedMatch.length > 0) {
-      setCourts(prev => prev.map(c => c.courtNumber === num ? { ...c, players: stagedMatch, status: 'active' } : c));
-      setStagedMatch([]);
-    }
+  const handleToggleAttendance = (name: string) => {
+    setAttendance(prev => prev.map(p => {
+      if (p.name !== name) return p;
+      if (p.status === 'absent') {
+        return { ...p, status: 'available', queueOrder: orderCounter };
+      } else {
+        return { ...p, status: 'absent', queueOrder: 999 };
+      }
+    }));
+    setOrderCounter(prev => prev + 1);
   };
 
-  const handleDisableCourtSlot = (num: number) => {
-    const courtToClear = courts.find(c => c.courtNumber === num);
-    let updatedAttendance = [...attendance];
-    let localCounter = orderCounter;
-
-    if (courtToClear && courtToClear.status === 'active' && courtToClear.players.length > 0) {
-      updatedAttendance = attendance.map(p => courtToClear.players.includes(p.name) ? { ...p, status: 'available', queueOrder: localCounter++ } : p);
-    }
-
-    saveToHistory(attendance, courts, orderCounter, activeCourtNumbers);
-
-    if (courtToClear && courtToClear.status === 'active' && courtToClear.players.length > 0) {
-      setAttendance(updatedAttendance);
-      setOrderCounter(localCounter);
-    }
-
-    setCourts(prev => prev.map(c => c.courtNumber === num ? { ...c, players: [], status: 'empty' } : c));
-    setActiveCourtNumbers(prev => prev.filter(n => n !== num));
-  };
-
-  const handleMatchFinished = (courtNumber: number, winners: string[], losers: string[], score: string) => {
-    saveToHistory();
-
-    const newMatchRecord: MatchRecord = {
-      id: Math.random().toString(36).substring(2, 9),
-      courtNumber,
-      winners,
-      losers,
-      score,
-      timestamp: Date.now()
-    };
-    setMatches(prev => [...prev, newMatchRecord]);
-
-    let localCounter = orderCounter;
-    const procW = winners.map(name => ({ name, queueOrder: localCounter++ }));
-    const procL = losers.map(name => ({ name, queueOrder: localCounter++ }));
-    const merged = [...procW, ...procL];
-    const names = merged.map(p => p.name);
-
-    const updatedAttendance = attendance.map(p => {
-      if (names.includes(p.name)) {
-        // Safe check: If flagged as resting while live, do not append to line queue
-        if (p.status === 'resting') {
-          return p; 
-        }
-        return {
-          ...p,
-          status: 'available' as const,
-          queueOrder: merged.find(m => m.name === p.name)!.queueOrder
-        };
+  const handleToggleRest = (name: string) => {
+    setAttendance(prev => prev.map(p => {
+      if (p.name !== name) return p;
+      if (p.status === 'resting') {
+        return { ...p, status: 'available', queueOrder: orderCounter };
+      } else if (p.status === 'available' || p.status === 'playing') {
+        return { ...p, status: 'resting', queueOrder: 999 };
       }
       return p;
+    }));
+    setOrderCounter(prev => prev + 1);
+  };
+
+  const handleClearCourt = (courtId: number, matchPlayers: string[]) => {
+    setCourts(prev => prev.map(c => c.id === courtId ? { ...c, currentMatch: null } : c));
+    
+    setAttendance(prev => {
+      let currentMaxCounter = orderCounter;
+      return prev.map(p => {
+        if (matchPlayers.includes(p.name)) {
+          if (p.status === 'resting') return p;
+          const updatedPlayer = { ...p, status: 'available' as const, queueOrder: currentMaxCounter };
+          currentMaxCounter++;
+          setOrderCounter(currentMaxCounter);
+          return updatedPlayer;
+        }
+        return p;
+      });
     });
+  };
 
-    let nextCourtPlayers: string[] = [];
-    let nextCourtStatus: 'active' | 'empty' = 'empty';
-    let remainingStagedMatch = [...stagedMatch];
-
-    if (remainingStagedMatch.length === 4) {
-      nextCourtPlayers = remainingStagedMatch;
-      nextCourtStatus = 'active';
-      remainingStagedMatch = []; 
+  const handleClearAllAttendance = () => {
+    if (window.confirm("Are you sure you want to sign out everyone?")) {
+      setAttendance(prev => prev.map(p => ({ ...p, status: 'absent', queueOrder: 999 })));
+      setCourts(prev => prev.map(c => ({ ...c, currentMatch: null })));
+      setOrderCounter(1);
     }
+  };
 
-    setAttendance(updatedAttendance);
-    setOrderCounter(localCounter);
-    setStagedMatch(remainingStagedMatch);
-    setCourts(prev => prev.map(c => c.courtNumber === courtNumber ? { ...c, players: nextCourtPlayers, status: nextCourtStatus } : c));
+  const handleDeletePlayer = (name: string) => {
+    if (window.confirm(`Permanently delete ${name} from database?`)) {
+      setAttendance(prev => prev.filter(p => p.name !== name));
+    }
+  };
+
+  const handleResetSession = () => {
+    if (window.confirm("Reset courts and put all active players back into queue?")) {
+      setCourts(prev => prev.map(c => ({ ...c, currentMatch: null })));
+      setAttendance(prev => {
+        let currentMaxCounter = 1;
+        const updated = prev.map(p => {
+          if (p.status !== 'absent') {
+            const up = { ...p, status: 'available' as const, queueOrder: currentMaxCounter };
+            currentMaxCounter++;
+            return up;
+          }
+          return p;
+        });
+        setOrderCounter(currentMaxCounter + 1);
+        return updated;
+      });
+    }
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 p-4 md:p-8 text-slate-100">
-      <div className="max-w-[1400px] mx-auto">
-        
-        <header className="mb-6 border-b border-slate-800 pb-4 flex justify-between items-center">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-indigo-500/30">
+      
+      {/* HEADER BAR */}
+      <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur sticky top-0 z-50 px-4 py-3 md:px-6">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-white">Digital Pegboard</h1>
-            <p className="text-slate-400 mt-1">Club Night Court Management</p>
+            <h1 className="text-xl font-black tracking-tight bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+              PEGBOARD
+            </h1>
+            <p className="text-[10px] text-slate-500 font-medium tracking-wider uppercase mt-0.5 hidden sm:block">
+              Matchmaking Engine
+            </p>
           </div>
           
-          <div className="flex items-center gap-3">
-            <Link href="/analytics" className="bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5">
-              📊 Analytics & Leaderboard
-            </Link>
-            <button
-              onClick={handleUndo}
-              disabled={history.length === 0}
-              className={`text-xs font-bold px-3 py-2 rounded-lg border transition-all flex items-center gap-1.5 ${
-                history.length > 0 ? 'bg-amber-600/10 hover:bg-amber-600/20 text-amber-400 border-amber-500/30' : 'bg-slate-900 text-slate-600 border-slate-800 cursor-not-allowed opacity-40'
-              }`}
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <button 
+              onClick={handleResetSession}
+              className="text-xs bg-slate-900 hover:bg-slate-800 text-slate-400 px-3 py-1.5 rounded-lg border border-slate-800 transition-all font-semibold"
             >
-              <span>⎌</span> Undo Last Action ({history.length})
-            </button>
-            <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="bg-red-950/40 hover:bg-red-900/60 text-red-400 border border-red-900/40 text-xs font-bold px-3 py-2 rounded-lg">
               Reset Session
             </button>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* RESPONSIBLE DASHBOARD WRAPPER */}
+      <main className="max-w-7xl mx-auto p-4 md:p-6 flex flex-col lg:flex-row gap-6 h-auto lg:h-[calc(100vh-65px)] overflow-hidden">
+        
+        {/* LEFT COMPONENT: COURTS CONTAINER */}
+        <div className="flex-grow lg:w-2/3 overflow-y-auto pr-0 lg:pr-2 pb-6 lg:pb-0 scrollbar-thin">
+          <div className="mb-4">
+            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
+              Live Courts
+            </h2>
+          </div>
           
-          {/* Attendance Column */}
-          <div className="lg:col-span-3">
-            <div className="border border-slate-800 bg-slate-900 rounded-xl p-4 h-full flex flex-col">
-              <h2 className="text-lg font-bold text-white mb-4 pb-2 border-b border-slate-800">Attendance Database</h2>
-              <form onSubmit={handleAddPlayerToMasterRoster} className="flex gap-2 mb-4">
-                <input type="text" value={newPlayerName} onChange={e => setNewPlayerName(e.target.value)} placeholder="Add new member..." className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-sm text-slate-100 flex-grow focus:outline-none focus:border-indigo-500" />
-                <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 rounded-lg">Add</button>
-              </form>
-              
-              <AttendanceList 
-                players={attendance} 
-                onToggleRest={handleToggleRestState} 
-                onToggleAttendance={handleToggleAttendance}
-                onCheckOutAll={handleCheckOutAllMembers}
-                onDeletePlayer={handleDeletePlayer}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4">
+            {courts.map((court) => (
+              <Court 
+                key={court.id}
+                court={court}
+                onClearCourt={handleClearCourt}
               />
-            </div>
+            ))}
+          </div>
+        </div>
+
+        {/* RIGHT COMPONENT: MANAGEMENT SIDEBAR */}
+        <div className="w-full lg:w-1/3 flex flex-col gap-6 bg-slate-900/40 border border-slate-900 p-4 rounded-xl h-auto lg:h-full overflow-y-auto">
+          
+          {/* Quick Add Form */}
+          <div className="bg-slate-950 p-3 rounded-lg border border-slate-900">
+            <form onSubmit={handleAddPlayerToMasterRoster} className="flex gap-2">
+              <input 
+                type="text"
+                value={newPlayerName}
+                onChange={(e) => setNewPlayerName(e.target.value)}
+                placeholder="New player name..."
+                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 w-full text-slate-200"
+              />
+              <button 
+                type="submit"
+                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors flex-shrink-0"
+              >
+                Add
+              </button>
+            </form>
           </div>
 
-          {/* Center Column */}
-          <div className="lg:col-span-6 space-y-4">
-            
-            {/* Staging Lane Visual Box */}
-            <div className={`border rounded-xl p-4 transition-all ${
-              stagedMatch.length > 0 ? 'bg-slate-900 border-indigo-500/40 shadow-md shadow-indigo-500/5' : 'bg-slate-900/60 border-slate-800 border-dashed'
-            }`}>
-              <div className="flex justify-between items-center mb-3">
-                <div className="flex items-center gap-2">
-                  <span className={`flex h-2 w-2 rounded-full ${isAutoDriveActive ? 'bg-indigo-400 animate-pulse' : 'bg-amber-500'}`} />
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Next Match On Deck</h3>
-                </div>
-                {stagedMatch.length > 0 && !isAutoDriveActive && (
-                  <button onClick={handleClearStagingLane} className="text-[10px] uppercase font-bold text-slate-500 hover:text-red-400">
-                    Cancel / Clear Staging
-                  </button>
-                )}
-              </div>
-
-              {stagedMatch.length > 0 ? (
-                <div className="grid grid-cols-4 gap-2">
-                  {stagedMatch.map((name) => (
-                    <div key={name} className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-center flex items-center justify-center min-h-[48px]">
-                      <p className="text-sm font-semibold text-white truncate">{name}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-2 text-xs text-slate-500 italic">
-                  {isAutoDriveActive ? "Waiting for enough players to fill queue..." : "No match lined up. Tap names in the queue to build the next game!"}
-                </div>
-              )}
-            </div>
-
-            {/* Courts Grid Layout */}
-            <div className="space-y-2">
-              <h2 className="text-xl font-semibold text-slate-200">Courts Layout</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {[1, 2, 3, 4].map((num) => {
-                  const isCourtActive = activeCourtNumbers.includes(num);
-                  const courtData = courts.find(c => c.courtNumber === num)!;
-
-                  if (isCourtActive) {
-                    return (
-                      <div key={num} className="h-[400px]">
-                        <Court 
-                          courtNumber={num} 
-                          players={courtData.players} 
-                          status={courtData.status}
-                          isFilling={false} 
-                          onClearCourt={(winners, losers, score) => handleMatchFinished(num, winners, losers, score)}
-                          onRemove={() => handleDisableCourtSlot(num)}
-                        />
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <button
-                      key={num}
-                      onClick={() => handleActivateCourtSlot(num)}
-                      className="h-[400px] border-2 border-dashed border-slate-800 bg-slate-900/20 hover:bg-slate-900/60 hover:border-slate-700 rounded-xl flex flex-col items-center justify-center text-slate-600 hover:text-slate-400 group transition-all"
-                    >
-                      <span className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform">+</span>
-                      <span className="text-xs font-bold uppercase tracking-wider">Open Court {num}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
+          {/* Waiting Queue Track */}
+          <div className="flex-shrink-0">
+            <WaitingQueue queue={queue} />
           </div>
 
-          {/* Queue Column */}
-          <div className="lg:col-span-3">
-            <WaitingQueue 
-              queue={waitingQueue} 
-              selectedPlayers={selectedPlayers} 
-              onSelectPlayer={handleSelectPlayerFromQueue} 
-              rawPlayers={attendance}
-              onSendToStaging={handleDeployToStaging}
-              onSendToDirectCourt={handleDeployDirectlyToCourt}
-              availableEmptyCourts={emptyActiveCourtNumbers}
-              onClearSelection={() => setSelectedPlayers([])}
-              isAutoDriveActive={isAutoDriveActive}
-              onToggleAutoDrive={() => setIsAutoDriveActive(!isAutoDriveActive)}
+          {/* Active / Database Lists */}
+          <div className="flex-grow overflow-y-auto">
+            <AttendanceList 
+              players={attendance}
+              onToggleRest={handleToggleRest}
+              onToggleAttendance={handleToggleAttendance}
+              onCheckOutAll={handleClearAllAttendance}
+              onDeletePlayer={handleDeletePlayer}
             />
           </div>
 
         </div>
-      </div>
-    </main>
+
+      </main>
+    </div>
   );
 }
