@@ -68,9 +68,18 @@ export default function Home() {
     const savedMatches = localStorage.getItem('b_matches');
     const savedAutoDrive = localStorage.getItem('b_autodrive');
 
-    if (savedAttendance) setAttendance(JSON.parse(savedAttendance));
-    else {
-      setAttendance([
+    if (savedAttendance) {
+      const parsedAttendance = JSON.parse(savedAttendance);
+      setAttendance(parsedAttendance);
+      
+      // Dynamically find the highest queue order or default to the list length + 1
+      if (savedCounter) {
+        setOrderCounter(parseInt(savedCounter, 10));
+      } else {
+        setOrderCounter(parsedAttendance.length + 1);
+      }
+    } else {
+      const defaultPlayers: Player[] = [
         { name: 'Dave', status: 'available', queueOrder: 1 },
         { name: 'Sarah', status: 'available', queueOrder: 2 },
         { name: 'James', status: 'available', queueOrder: 3 },
@@ -80,8 +89,10 @@ export default function Home() {
         { name: 'Michael', status: 'absent', queueOrder: 999 },
         { name: 'Jessica', status: 'absent', queueOrder: 999 },
         { name: 'Tom', status: 'absent', queueOrder: 999 },
-      ]);
-      setOrderCounter(7);
+      ];
+      setAttendance(defaultPlayers);
+      localStorage.setItem('b_attendance', JSON.stringify(defaultPlayers));
+      setOrderCounter(10); // set to a safe number higher than the default roster size
     }
 
     if (savedCourts) setCourts(JSON.parse(savedCourts));
