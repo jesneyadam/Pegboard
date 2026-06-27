@@ -38,9 +38,9 @@ interface HistorySnapshot {
 }
 
 const extractNextAutoPickGroup = (currentQueueList: string[], count: number = 4): string[] | null => {
-  if (currentList.length < 4) return null;
-  const picker = currentList[0];
-  const surrounding = currentList.slice(1, Math.min(8, currentList.length));
+  if (currentQueueList.length < 4) return null;
+  const picker = currentQueueList[0];
+  const surrounding = currentQueueList.slice(1, Math.min(8, currentList.length));
   const randomized = [...surrounding].sort(() => 0.5 - Math.random());
   return [picker, ...randomized.slice(0, count - 1)];
 };
