@@ -37,12 +37,12 @@ interface HistorySnapshot {
   matches: MatchRecord[];
 }
 
-const extractNextAutoPickGroup = (currentQueueList: string[], needed: number = 4): string[] | null => {
-  if (currentList.length < 8) return null; 
+const extractNextAutoPickGroup = (currentQueueList: string[], count: number = 4): string[] | null => {
+  if (currentList.length < 4) return null;
   const picker = currentList[0];
-  const candidates = currentList.slice(1, 8);
-  const randomized = [...candidates].sort(() => 0.5 - Math.random());
-  return [picker, ...randomized.slice(0, needed - 1)];
+  const surrounding = currentList.slice(1, Math.min(8, currentList.length));
+  const randomized = [...surrounding].sort(() => 0.5 - Math.random());
+  return [picker, ...randomized.slice(0, count - 1)];
 };
 
 export default function Home() {
@@ -73,7 +73,7 @@ export default function Home() {
   const isProcessingAutoDrive = useRef(false);
 
   // ==========================================
-  // 1.5. STATE REFS (For stable non-dep Auto-Drive loop)
+  // 1.5. STATE REFS (For stable Auto-Drive loop)
   // ==========================================
   const attendanceRef = useRef(attendance);
   const courtsRef = useRef(courts);
@@ -411,7 +411,8 @@ export default function Home() {
       setOrderCounter(localCounter);
     }
 
-    setCourts(prev => prev.filter(c => c.courtNumber !== num));
+    // UPDATE: Set status to 'empty' and clear players while preserving slot array integrity
+    setCourts(prev => prev.map(c => c.courtNumber === num ? { ...c, players: [], status: 'empty' } : c));
     setActiveCourtNumbers(prev => prev.filter(n => n !== num));
   };
 
@@ -584,10 +585,10 @@ export default function Home() {
     const interval = setInterval(() => {
       if (!isHydrated || !isAutoActiveRef.current || isProcessingAutoDrive.current) return;
 
-      const extractNextAutoPickGroup = (currentQueueList: string[], needed: number = 4): string[] | null => {
-        if (currentQueueList.length < 8) return null; 
-        const picker = currentQueueList[0];
-        const candidates = currentQueueList.slice(1, 8);
+      const extractNextPick = (queueList: string[], needed: number = 4): string[] | null => {
+        if (queueList.length < 8) return null; 
+        const picker = queueList[0];
+        const candidates = queueList.slice(1, 8);
         const randomized = [...candidates].sort(() => 0.5 - Math.random());
         return [picker, ...randomized.slice(0, needed - 1)];
       };
@@ -634,7 +635,7 @@ export default function Home() {
       openCourts = localCourts.filter(c => activeCourtNumsRef.current.includes(c.courtNumber) && c.status === 'empty');
       while (openCourts.length > 0) {
         const activeQueue = getQueue(localAttendance);
-        const group = extractNextAutoPickGroup(activeQueue, 4);
+        const group = extractNextPick(activeQueue, 4);
         if (!group) break;
 
         let finalGroup = [...group];
@@ -663,7 +664,7 @@ export default function Home() {
       if (localStaged.length < 4) {
         const activeQueue = getQueue(localAttendance);
         if (localStaged.length === 0) {
-          const group = extractNextAutoPickGroup(activeQueue, 4);
+          const group = extractNextPick(activeQueue, 4);
           if (group) {
             localStaged = group;
             localAttendance = localAttendance.map(p => group.includes(p.name) ? { ...p, status: 'playing' } : p);
@@ -745,7 +746,7 @@ export default function Home() {
                   <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 rounded-lg cursor-pointer">Add</button>
                 </div>
                 
-                {/* Segmented Gender Toggle (with Person in Square Images) */}
+                {/* Segmented Gender Toggle */}
                 <div className="flex bg-slate-950 border border-slate-800 p-1 rounded-lg text-xs font-semibold justify-around">
                   <button
                     type="button"
