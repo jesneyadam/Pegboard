@@ -36,17 +36,6 @@ interface HistorySnapshot {
   matches: MatchRecord[];
 }
 
-// ==========================================
-// HELPER FUNCTIONS (Outside component body)
-// ==========================================
-const extractNextAutoPickGroup = (currentQueueList: string[], needed: number = 4): string[] | null => {
-  if (currentQueueList.length < 8) return null; 
-  const picker = currentQueueList[0];
-  const candidates = currentQueueList.slice(1, 8);
-  const randomized = [...candidates].sort(() => 0.5 - Math.random());
-  return [picker, ...randomized.slice(0, needed - 1)];
-};
-
 export default function Home() {
   // ==========================================
   // 1. ALL CORE STATES
@@ -74,25 +63,6 @@ export default function Home() {
   const isProcessingAutoDrive = useRef(false);
 
   // ==========================================
-  // 1.5. STATE REFS (For stable non-dep Auto-Drive loop)
-  // ==========================================
-  const attendanceRef = useRef(attendance);
-  const courtsRef = useRef(courts);
-  const stagedMatchRef = useRef(stagedMatch);
-  const activeCourtNumsRef = useRef(activeCourtNumbers);
-  const isAutoActiveRef = useRef(isAutoDriveActive);
-  const isFairPairingRef = useRef(isFairPairingActive);
-
-  useEffect(() => {
-    attendanceRef.current = attendance;
-    courtsRef.current = courts;
-    stagedMatchRef.current = stagedMatch;
-    activeCourtNumsRef.current = activeCourtNumbers;
-    isAutoActiveRef.current = isAutoDriveActive;
-    isFairPairingRef.current = isFairPairingActive;
-  }, [attendance, courts, stagedMatch, activeCourtNumbers, isAutoDriveActive, isFairPairingActive]);
-
-  // ==========================================
   // 2. UTILITIES
   // ==========================================
   const saveToHistory = (
@@ -112,37 +82,6 @@ export default function Home() {
       matches: JSON.parse(JSON.stringify(currMatches))
     };
     setHistory(prev => [snapshot, ...prev].slice(0, 10));
-  };
-
-  const getDynamicSkill = (playerName: string) => {
-    const playerMatches = matches.filter(m => 
-      m.winners.includes(playerName) || m.losers.includes(playerName)
-    );
-    
-    if (playerMatches.length === 0) return 1200; 
-
-    let totalPointsDiff = 0;
-    playerMatches.forEach(m => {
-      const [winStr, loseStr] = m.score.split('-');
-      const winPoints = parseInt(winStr, 10) || 21;
-      const losePoints = parseInt(loseStr, 10) || 0;
-      const diff = winPoints - losePoints;
-
-      if (m.winners.includes(playerName)) {
-        totalPointsDiff += diff;
-      } else {
-        totalPointsDiff -= diff;
-      }
-    });
-
-    const wins = playerMatches.filter(m => m.winners.includes(playerName)).length;
-    const totalMatches = playerMatches.length;
-
-    const confidenceWeight = 4;
-    const smoothedWinRate = (wins + (confidenceWeight * 0.5)) / (totalMatches + confidenceWeight);
-    const avgPointsDiff = totalPointsDiff / totalMatches;
-
-    return (smoothedWinRate * 100) + (avgPointsDiff * 3);
   };
 
   const waitingQueue = attendance
@@ -195,63 +134,6 @@ export default function Home() {
     });
   };
 
-  const handleDrawStrongGame = () => {
-    if (waitingQueue.length < 4 || isAutoDriveActive || stagedMatch.length > 0) return;
-    saveToHistory();
-
-    const picker = waitingQueue[0];
-    const remainingCandidates = waitingQueue.slice(1);
-
-    const rankedCandidates = remainingCandidates.map(name => ({
-      name,
-      skill: getDynamicSkill(name)
-    })).sort((a, b) => b.skill - a.skill);
-
-    const topEight = rankedCandidates.slice(0, 8);
-    const shuffledTopEight = [...topEight].sort(() => 0.5 - Math.random());
-    const randomOpponents = shuffledTopEight.slice(0, 3).map(p => p.name);
-
-    const strongGroup = [picker, ...randomOpponents];
-
-    setStagedMatch(strongGroup);
-    setAttendance(prev => prev.map(p => strongGroup.includes(p.name) ? { ...p, status: 'playing' } : p));
-  };
-
-  const handleMoveStagedToCourt = (courtNum: number) => {
-    if (stagedMatch.length === 0) return;
-    saveToHistory();
-
-    setCourts(prev => prev.map(c => c.courtNumber === courtNum ? { ...c, players: stagedMatch, status: 'active' } : c));
-    setStagedMatch([]);
-  };
-
-  const handleMoveStagedEvenMatch = (courtNum: number) => {
-    if (stagedMatch.length !== 4) return;
-
-    const playersWithSkill = stagedMatch.map(name => ({
-      name,
-      skill: getDynamicSkill(name)
-    })).sort((a, b) => b.skill - a.skill);
-
-    const team1 = [playersWithSkill[0], playersWithSkill[3]];
-    const team2 = [playersWithSkill[1], playersWithSkill[2]];
-
-    const formattedTeams = [
-      `${team1[0].name} & ${team1[1].name}`,
-      `${team2[0].name} & ${team2[1].name}`
-    ];
-
-    saveToHistory();
-
-    setCourts(prev => prev.map(c => c.courtNumber === courtNum ? { 
-      ...c, 
-      players: formattedTeams, 
-      status: 'active' 
-    } : c));
-    
-    setStagedMatch([]);
-  };
-
   const handleToggleRestState = (name: string) => {
     saveToHistory();
     const isStaged = stagedMatch.includes(name);
@@ -295,7 +177,7 @@ export default function Home() {
     saveToHistory();
     setAttendance(prev => prev.filter(p => p.name !== name));
     setSelectedPlayers(prev => prev.filter(n => n !== name));
-    setStagedMatch(prev => prev.filter(p => p !== name));
+    setStagedMatch(prev => prev.filter(n => n !== name));
     setCourts(prev => prev.map(c => ({ ...c, players: c.players.filter(n => n !== name) })));
   };
 
@@ -323,14 +205,50 @@ export default function Home() {
     setSelectedPlayers([]);
   };
 
+  // Deploys 4 selected players onto a court arranged as perfectly even interleaved teams
   const handleDeployEvenMatch = (courtNum: number) => {
     if (selectedPlayers.length !== 4) return;
 
+    const getDynamicSkill = (playerName: string) => {
+      const playerMatches = matches.filter(m => 
+        m.winners.includes(playerName) || m.losers.includes(playerName)
+      );
+      
+      if (playerMatches.length === 0) return 1200; 
+
+      let totalPointsDiff = 0;
+      playerMatches.forEach(m => {
+        const [winStr, loseStr] = m.score.split('-');
+        const winPoints = parseInt(winStr, 10) || 21;
+        const losePoints = parseInt(loseStr, 10) || 0;
+        const diff = winPoints - losePoints;
+
+        if (m.winners.includes(playerName)) {
+          totalPointsDiff += diff;
+        } else {
+          totalPointsDiff -= diff;
+        }
+      });
+
+      const wins = playerMatches.filter(m => m.winners.includes(playerName)).length;
+      const totalMatches = playerMatches.length;
+
+      const confidenceWeight = 4;
+      const smoothedWinRate = (wins + (confidenceWeight * 0.5)) / (totalMatches + confidenceWeight);
+      const avgPointsDiff = totalPointsDiff / totalMatches;
+
+      return (smoothedWinRate * 100) + (avgPointsDiff * 3);
+    };
+
+    // Map players and sort strictly by skill descending (strongest -> weakest)
     const playersWithSkill = selectedPlayers.map(name => ({
       name,
       skill: getDynamicSkill(name)
     })).sort((a, b) => b.skill - a.skill);
 
+    // Explicitly interleave:
+    // Team A: [Strongest (0), Weakest (3)]
+    // Team B: [Second Strongest (1), Second Weakest (2)]
     const team1 = [playersWithSkill[0], playersWithSkill[3]];
     const team2 = [playersWithSkill[1], playersWithSkill[2]];
 
@@ -352,13 +270,13 @@ export default function Home() {
   };
 
   const handleClearStagingLane = () => {
-    if (stagedMatch.length === 0 || isAutoCheckActive()) return;
+    if (stagedMatch.length === 0 || isAutoActiveCheck()) return;
     saveToHistory();
     setAttendance(prev => prev.map(p => stagedMatch.includes(p.name) ? { ...p, status: 'available' } : p));
     setStagedMatch([]);
   };
 
-  const isAutoCheckActive = () => isAutoDriveActive;
+  const isAutoActiveCheck = () => isAutoDriveActive;
 
   const handleCheckOutAllMembers = () => {
     saveToHistory();
@@ -370,7 +288,7 @@ export default function Home() {
     setOrderCounter(1);
   };
 
-  const addPlayerToMasterRoster = (e: React.FormEvent) => {
+  const handleAddPlayerToMasterRoster = (e: React.FormEvent) => {
     e.preventDefault();
     const clean = newPlayerName.trim();
     if (!clean || attendance.some(p => p.name.toLowerCase() === clean.toLowerCase())) return;
@@ -431,6 +349,7 @@ export default function Home() {
 
     const currentCourt = courts.find(c => c.courtNumber === courtNumber);
     
+    // Safely parse individual names, splitting combined team strings (e.g., "A & B") if present
     const extractNames = (playerSlot: string[]) => {
       const flatNames: string[] = [];
       playerSlot.forEach(item => {
@@ -446,14 +365,15 @@ export default function Home() {
 
     const activePlayersOnCourt = currentCourt ? extractNames(currentCourt.players) : [...winners, ...losers];
 
+    // UNPACK: If fair-pairing strings were used for winners/losers parameters, unpack them to commit INDIVIDUAL match stats
     const flatWinners = extractNames(winners);
     const flatLosers = extractNames(losers);
 
     const newMatchRecord: MatchRecord = {
       id: Math.random().toString(36).substring(2, 9),
       courtNumber,
-      winners: flatWinners, 
-      losers: flatLosers,   
+      winners: flatWinners, // Commit as individual entities
+      losers: flatLosers,   // Commit as individual entities
       score,
       timestamp: Date.now()
     };
@@ -468,6 +388,7 @@ export default function Home() {
     let nextOrder = currentMaxOrder + 1;
     const orderAssignments: { [key: string]: number } = {};
     
+    // Winners get assigned sequential queue orders first, placing them strictly above the losers in the list
     const orderedRequeue = [...flatWinners, ...flatLosers];
 
     orderedRequeue.forEach(name => { 
@@ -504,6 +425,9 @@ export default function Home() {
     setCourts(prev => prev.map(c => c.courtNumber === courtNumber ? { ...c, players: nextCourtPlayers, status: nextCourtStatus } : c));
   };
 
+  // ==========================================
+  // 4. SYNC EFFECTS
+  // ==========================================
   useEffect(() => {
     const savedAttendance = localStorage.getItem('b_attendance');
     const savedCourts = localStorage.getItem('b_courts');
@@ -577,114 +501,80 @@ export default function Home() {
     localStorage.setItem('b_autodrive', JSON.stringify(isAutoDriveActive));
   }, [attendance, courts, orderCounter, activeCourtNumbers, history, stagedMatch, matches, isAutoDriveActive, isHydrated]);
 
-  // ==========================================
-  // 4. ISOLATED AUTO-DRIVE TIMER-BASED LOOP
-  // ==========================================
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (!isHydrated || !isAutoActiveRef.current || isProcessingAutoDrive.current) return;
+    if (!isHydrated || !isAutoDriveActive || isProcessingAutoDrive.current) return;
 
-      let localAttendance = [...attendanceRef.current];
-      let localCourts = [...courtsRef.current];
-      let localStaged = [...stagedMatchRef.current];
-      let modified = false;
+    const extractNextAutoPickGroup = (currentQueueList: string[], needed: number = 4): string[] | null => {
+      if (currentList.length < 8) return null; 
+      const picker = currentList[0];
+      const candidates = currentList.slice(1, 8);
+      const randomized = [...candidates].sort(() => 0.5 - Math.random());
+      return [picker, ...randomized.slice(0, needed - 1)];
+    };
 
-      let openCourts = localCourts.filter(c => activeCourtNumsRef.current.includes(c.courtNumber) && c.status === 'empty');
-      if (openCourts.length > 0 && localStaged.length === 4) {
-        const target = openCourts[0];
-        
-        // 👉 FAIR PAIRING INTERCEPTION (STAGED)
-        let finalStagedGroup = [...localStaged];
-        if (isFairPairingRef.current) {
-          const playersWithSkill = localStaged.map(name => ({
-            name,
-            skill: getDynamicSkill(name)
-          })).sort((a, b) => b.skill - a.skill);
+    let localAttendance = [...attendance];
+    let localCourts = [...courts];
+    let localStaged = [...stagedMatch];
+    let modified = false;
 
-          const team1 = [playersWithSkill[0], playersWithSkill[3]];
-          const team2 = [playersWithSkill[1], playersWithSkill[2]];
+    let openCourts = localCourts.filter(c => activeCourtNumbers.includes(c.courtNumber) && c.status === 'empty');
+    if (openCourts.length > 0 && localStaged.length === 4) {
+      const target = openCourts[0];
+      localCourts = localCourts.map(c => c.courtNumber === target.courtNumber ? { ...c, players: localStaged, status: 'active' } : c);
+      localStaged = [];
+      modified = true;
+    }
 
-          finalStagedGroup = [
-            `${team1[0].name} & ${team1[1].name}`,
-            `${team2[0].name} & ${team2[1].name}`
-          ];
-        }
+    const getQueue = (att: Player[]) => att
+      .filter(p => p.status === 'available' || p.status === 'resting')
+      .sort((a, b) => {
+        if (a.status === 'available' && b.status === 'resting') return -1;
+        if (a.status === 'resting' && b.status === 'available') return 1;
+        return a.queueOrder - b.queueOrder;
+      })
+      .map(p => p.name);
 
-        localCourts = localCourts.map(c => c.courtNumber === target.courtNumber ? { ...c, players: finalStagedGroup, status: 'active' } : c);
-        localStaged = [];
-        modified = true;
-      }
+    openCourts = localCourts.filter(c => activeCourtNumbers.includes(c.courtNumber) && c.status === 'empty');
+    while (openCourts.length > 0) {
+      const activeQueue = getQueue(localAttendance);
+      const group = extractNextAutoPickGroup(activeQueue, 4);
+      if (!group) break;
 
-      const getQueue = (att: Player[]) => att
-        .filter(p => p.status === 'available' || p.status === 'resting')
-        .sort((a, b) => {
-          if (a.status === 'available' && b.status === 'resting') return -1;
-          if (a.status === 'resting' && b.status === 'available') return 1;
-          return a.queueOrder - b.queueOrder;
-        })
-        .map(p => p.name);
+      const target = openCourts.shift()!;
+      localCourts = localCourts.map(c => c.courtNumber === target.courtNumber ? { ...c, players: group, status: 'active' } : c);
+      localAttendance = localAttendance.map(p => group.includes(p.name) ? { ...p, status: 'playing' } : p);
+      modified = true;
+    }
 
-      openCourts = localCourts.filter(c => activeCourtNumsRef.current.includes(c.courtNumber) && c.status === 'empty');
-      while (openCourts.length > 0) {
-        const activeQueue = getQueue(localAttendance);
+    if (localStaged.length < 4) {
+      const activeQueue = getQueue(localAttendance);
+      if (localStaged.length === 0) {
         const group = extractNextAutoPickGroup(activeQueue, 4);
-        if (!group) break;
-
-        let finalGroup = [...group];
-
-        // 👉 FAIR PAIRING INTERCEPTION (EXTRACTED)
-        if (isFairPairingRef.current) {
-          const playersWithSkill = group.map(name => ({
-            name,
-            skill: getDynamicSkill(name)
-          })).sort((a, b) => b.skill - a.skill);
-
-          const team1 = [playersWithSkill[0], playersWithSkill[3]];
-          const team2 = [playersWithSkill[1], playersWithSkill[2]];
-
-          finalGroup = [
-            `${team1[0].name} & ${team1[1].name}`,
-            `${team2[0].name} & ${team2[1].name}`
-          ];
-        }
-
-        const target = openCourts.shift()!;
-        localCourts = localCourts.map(c => c.courtNumber === target.courtNumber ? { ...c, players: finalGroup, status: 'active' } : c);
-        localAttendance = localAttendance.map(p => group.includes(p.name) ? { ...p, status: 'playing' } : p);
-        modified = true;
-      }
-
-      if (localStaged.length < 4) {
-        const activeQueue = getQueue(localAttendance);
-        if (localStaged.length === 0) {
-          const group = extractNextAutoPickGroup(activeQueue, 4);
-          if (group) {
-            localStaged = group;
-            localAttendance = localAttendance.map(p => group.includes(p.name) ? { ...p, status: 'playing' } : p);
-            modified = true;
-          }
-        } else if (activeQueue.length > 0) {
-          const space = 4 - localStaged.length;
-          const filling = activeQueue.slice(0, space);
-          localStaged = [...localStaged, ...filling];
-          localAttendance = localAttendance.map(p => filling.includes(p.name) ? { ...p, status: 'playing' } : p);
+        if (group) {
+          localStaged = group;
+          localAttendance = localAttendance.map(p => group.includes(p.name) ? { ...p, status: 'playing' } : p);
           modified = true;
         }
+      } else if (activeQueue.length > 0) {
+        const space = 4 - localStaged.length;
+        const filling = activeQueue.slice(0, space);
+        localStaged = [...localStaged, ...filling];
+        localAttendance = localAttendance.map(p => filling.includes(p.name) ? { ...p, status: 'playing' } : p);
+        modified = true;
       }
+    }
 
-      if (modified) {
-        isProcessingAutoDrive.current = true;
-        saveToHistory(localAttendance, localCourts, orderCounter, activeCourtNumbers, localStaged);
-        setAttendance(localAttendance);
-        setCourts(localCourts);
-        setStagedMatch(localStaged);
-        setSelectedPlayers([]);
-        setTimeout(() => { isProcessingAutoDrive.current = false; }, 30);
-      }
-    }, 1000);
+    if (modified) {
+      isProcessingAutoDrive.current = true;
+      saveToHistory(localAttendance, localCourts, orderCounter, activeCourtNumbers, localStaged);
+      setAttendance(localAttendance);
+      setCourts(localCourts);
+      setStagedMatch(localStaged);
+      setSelectedPlayers([]);
+      setTimeout(() => { isProcessingAutoDrive.current = false; }, 30);
+    }
 
-    return () => clearInterval(interval);
-  }, [isHydrated, orderCounter]);
+  }, [attendance, courts, stagedMatch, isAutoDriveActive, activeCourtNumbers, isHydrated, orderCounter]);
 
   return (
     <main className="min-h-screen bg-slate-950 p-4 md:p-8 text-slate-100">
@@ -697,14 +587,27 @@ export default function Home() {
           </div>
           
           <div className="flex items-center gap-3">
-		        <Link href="/analytics" className="bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5">
-              📊 Player Leaderboard
-            </Link>
-		  
-            <Link href="/analytics/pairs" className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5">
-              👥 Pairs Leaderboard
-            </Link>
+            {/* Fair Pairing ON/OFF Toggle Switch */}
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg text-xs">
+              <span className="text-slate-400 font-medium">Fair Pairing:</span>
+              <button 
+                onClick={() => setIsFairPairingActive(!isFairPairingActive)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                  isFairPairingActive ? 'bg-indigo-600' : 'bg-slate-700'
+                }`}
+              >
+                <span 
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    isFairPairingActive ? 'translate-x-4' : 'translate-x-0.5'
+                  }`} 
+                />
+              </button>
+              <span className="font-bold text-white w-6">{isFairPairingActive ? 'ON' : 'OFF'}</span>
+            </div>
 
+            <Link href="/analytics" className="bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5">
+              📊 Analytics & Leaderboard
+            </Link>
             <button
               onClick={handleUndo}
               disabled={history.length === 0}
@@ -726,7 +629,7 @@ export default function Home() {
           <div className="lg:col-span-3">
             <div className="border border-slate-800 bg-slate-900 rounded-xl p-4 h-full flex flex-col">
               <h2 className="text-lg font-bold text-white mb-4 pb-2 border-b border-slate-800">Attendance Database</h2>
-              <form onSubmit={addPlayerToMasterRoster} className="flex gap-2 mb-4">
+              <form onSubmit={handleAddPlayerToMasterRoster} className="flex gap-2 mb-4">
                 <input type="text" value={newPlayerName} onChange={e => setNewPlayerName(e.target.value)} placeholder="Add new member..." className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-sm text-slate-100 flex-grow focus:outline-none focus:border-indigo-500" />
                 <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 rounded-lg">Add</button>
               </form>
@@ -751,59 +654,24 @@ export default function Home() {
                   <span className={`flex h-2 w-2 rounded-full ${isAutoDriveActive ? 'bg-indigo-400 animate-pulse' : 'bg-amber-500'}`} />
                   <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Next Match</h3>
                 </div>
-                
-                {/* Controls */}
-                <div className="flex items-center gap-2">
-                  {stagedMatch.length === 0 && !isAutoDriveActive && waitingQueue.length >= 4 && (
-                    <button 
-                      onClick={handleDrawStrongGame}
-                      className="bg-indigo-950/60 border border-indigo-700/50 hover:bg-indigo-900/60 text-indigo-300 font-bold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-md cursor-pointer animate-pulse"
-                    >
-                      🔥 Draw Strong Game
-                    </button>
-                  )}
-                  {stagedMatch.length > 0 && !isAutoDriveActive && (
-                    <button onClick={handleClearStagingLane} className="text-[10px] uppercase font-bold text-slate-500 hover:text-red-400">
-                      Cancel / Clear Staging
-                    </button>
-                  )}
-                </div>
+                {stagedMatch.length > 0 && !isAutoDriveActive && (
+                  <button onClick={handleClearStagingLane} className="text-[10px] uppercase font-bold text-slate-500 hover:text-red-400">
+                    Cancel / Clear Staging
+                  </button>
+                )}
               </div>
 
               {stagedMatch.length > 0 ? (
-                <div>
-                  <div className="grid grid-cols-4 gap-2 mb-3">
-                    {stagedMatch.map((name) => (
-                      <div key={name} className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-center flex items-center justify-center min-h-[48px]">
-                        <p className="text-sm font-semibold text-white truncate">{name}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {!isAutoDriveActive && emptyActiveCourtNumbers.length > 0 && (
-                    <div className="flex gap-2 pt-2 border-t border-slate-800/60">
-                      {stagedMatch.length === 4 && (
-                        <button 
-                          onClick={() => handleMoveStagedEvenMatch(emptyActiveCourtNumbers[0])}
-                          className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 rounded-lg transition-colors"
-                        >
-                          ⚖️ Send Staged to Court {emptyActiveCourtNumbers[0]} (Fair Pairs)
-                        </button>
-                      )}
-                      <button 
-                        onClick={() => handleMoveStagedToCourt(emptyActiveCourtNumbers[0])}
-                        className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs py-2 rounded-lg transition-colors"
-                      >
-                        ➡️ Send Staged to Court {emptyActiveCourtNumbers[0]} (As Is)
-                      </button>
+                <div className="grid grid-cols-4 gap-2">
+                  {stagedMatch.map((name) => (
+                    <div key={name} className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-center flex items-center justify-center min-h-[48px]">
+                      <p className="text-sm font-semibold text-white truncate">{name}</p>
                     </div>
-                  )}
+                  ))}
                 </div>
               ) : (
                 <div className="text-center py-2 text-xs text-slate-500 italic">
-                  {isAutoDriveActive 
-                    ? "Waiting for enough players to fill queue..." 
-                    : "No match lined up. Tap names in the queue to build the next game, or hit 'Draw Strong Game' for a challenge!"}
+                  {isAutoDriveActive ? "Waiting for enough players to fill queue..." : "No match lined up. Tap names in the queue to build the next game!"}
                 </div>
               )}
             </div>
@@ -830,12 +698,13 @@ export default function Home() {
                       <div key={num} className="h-auto">
                         <Court 
                           courtNumber={num} 
-                          players={courtData.players || []} 
+                          players={courtData.players} 
                           status={courtData.status}
                           isFilling={false} 
                           onClearCourt={(winners, losers, score) => handleMatchFinished(num, winners, losers, score)}
                           onRemove={() => handleDisableCourtSlot(num)}
                         />
+                        {/* Render balanced even match button when 4 players are selected AND Fair Pairing is ON */}
                         {selectedPlayers.length === 4 && isFairPairingActive && (
                           <div className="mt-2 bg-indigo-950/40 border border-indigo-800/60 rounded-lg p-2 text-center">
                             <button
@@ -878,8 +747,6 @@ export default function Home() {
               onClearSelection={() => setSelectedPlayers([])}
               isAutoDriveActive={isAutoDriveActive}
               onToggleAutoDrive={() => setIsAutoDriveActive(!isAutoDriveActive)}
-              isFairPairingActive={isFairPairingActive}
-              onToggleFairPairing={() => setIsFairPairingActive(!isFairPairingActive)}
               onToggleRest={handleToggleRestState}
               onToggleAttendance={handleToggleAttendance}
             />
