@@ -11,7 +11,7 @@ interface CourtProps {
 
 export default function Court({  
   courtNumber, 
-  players = [], 
+  players, 
   status, 
   isFilling = false,
   onClearCourt, 
@@ -22,7 +22,7 @@ export default function Court({
   const [scoreTeam2, setScoreTeam2] = useState('');
 
   // Compact layout: filters out empty padding strings entirely
-  const activePlayers = (players || []).filter(Boolean);
+  const activePlayers = players.filter(Boolean);
   const actualPlayerCount = activePlayers.length;
   
   // Set required winners dynamically: 2 winners for doubles (4 players), 1 for singles (2 players)

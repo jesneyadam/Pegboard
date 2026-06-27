@@ -21,9 +21,18 @@ interface PlayerStats {
   pointDifferential: number; // Added tracking points differential metric
 }
 
+interface MasterPlayer {
+  name: string;
+  gender: 'male' | 'female';
+}
+
 export default function AnalyticsPage() {
   const [matches, setMatches] = useState<MatchRecord[]>([]);
+  const [masterRoster, setMasterRoster] = useState<MasterPlayer[]>([]);
   const [leaderboard, setLeaderboard] = useState<PlayerStats[]>([]);
+  
+  // Gender filter state: 'all' | 'male' | 'female'
+  const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female'>('all');
 
   // States to keep track of inline editing per row
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
@@ -82,12 +91,39 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     const savedMatches = localStorage.getItem('b_matches');
+    const savedRoster = localStorage.getItem('b_attendance');
+    
+    let parsedRoster: MasterPlayer[] = [];
+    if (savedRoster) {
+      parsedRoster = JSON.parse(savedRoster);
+      setMasterRoster(parsedRoster);
+    }
+
     if (savedMatches) {
       const parsedMatches: MatchRecord[] = JSON.parse(savedMatches);
       setMatches(parsedMatches);
       processMatchStatistics(parsedMatches);
     }
   }, []);
+
+  // 1. Filter the Master Roster based on gender filter
+  const isGenderMatch = (playerName: string, targetGender: 'male' | 'female') => {
+    const p = masterRoster.find(item => item.name.toLowerCase() === playerName.toLowerCase());
+    return p ? p.gender === targetGender : false;
+  };
+
+  // 2. Filter Leaderboard (Ranks)
+  const filteredLeaderboard = leaderboard.filter(player => {
+    if (genderFilter === 'all') return true;
+    return isGenderMatch(player.name, genderFilter);
+  });
+
+  // 3. Filter Matches based on whether at least one player of the selected gender participated
+  const filteredMatches = matches.filter(match => {
+    if (genderFilter === 'all') return true;
+    const allParticipants = [...match.winners, ...match.losers];
+    return allParticipants.some(player => isGenderMatch(player, genderFilter));
+  });
 
   // Set up inline tracking parameters for changes
   const handleStartEdit = (match: MatchRecord) => {
@@ -146,38 +182,72 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="flex items-center gap-3">
-		              <Link href="/" className="bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800 text-xs font-bold px-4 py-2.5 rounded-lg transition-all">
+            <Link href="/" className="bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800 text-xs font-bold px-4 py-2.5 rounded-lg transition-all">
               🏠 Pegboard
             </Link>
             <Link href="/analytics/pairs" className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5">
               👥 Pairs Leaderboard
             </Link>
-
           </div>
         </header>
 
+        {/* Header title & segmented gender filters side by side */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-white">Individual Player Analytics</h1>
+          
+          {/* Segmented Filter Options (All, Male, Female) */}
+          <div className="flex items-center bg-slate-900 border border-slate-800 p-1 rounded-lg">
+            <button
+              onClick={() => setGenderFilter('all')}
+              className={`px-3 py-1.5 text-xs font-bold rounded transition-all cursor-pointer ${
+                genderFilter === 'all' 
+                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' 
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+              }`}
+            >
+              🌎 All Players
+            </button>
+            <button
+              onClick={() => setGenderFilter('male')}
+              className={`px-3 py-1.5 text-xs font-bold rounded transition-all cursor-pointer flex items-center gap-1 ${
+                genderFilter === 'male' 
+                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' 
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+              }`}
+            >
+              ♂️ Male
+            </button>
+            <button
+              onClick={() => setGenderFilter('female')}
+              className={`px-3 py-1.5 text-xs font-bold rounded transition-all cursor-pointer flex items-center gap-1 ${
+                genderFilter === 'female' 
+                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' 
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+              }`}
+            >
+              ♀️ Female
+            </button>
+          </div>
         </div>
 
-        {/* Overview Stats */}
+        {/* Overview Stats (Filter Aware) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between h-28">
             <span className="text-xs uppercase tracking-wider text-slate-400 font-bold">Total Matches Logged</span>
-            <span className="text-4xl font-extrabold text-indigo-400">{matches.length}</span>
+            <span className="text-4xl font-extrabold text-indigo-400">{filteredMatches.length}</span>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between h-28">
             <span className="text-xs uppercase tracking-wider text-slate-400 font-bold">Active Competitors</span>
-            <span className="text-4xl font-extrabold text-emerald-400">{leaderboard.length}</span>
+            <span className="text-4xl font-extrabold text-emerald-400">{filteredLeaderboard.length}</span>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between h-28">
             <span className="text-xs uppercase tracking-wider text-slate-400 font-bold">Strongest Player</span>
             <span className="text-2xl font-extrabold text-amber-400 truncate mt-1">
-              {leaderboard[0] ? leaderboard[0].name : 'No Data Yet'}
+              {filteredLeaderboard[0] ? filteredLeaderboard[0].name : 'No Data Yet'}
             </span>
-            {leaderboard[0] && (
+            {filteredLeaderboard[0] && (
               <span className="text-[10px] text-slate-500 font-medium">
-                {leaderboard[0].winRate.toFixed(0)}% Win Rate ({leaderboard[0].wins}W - {leaderboard[0].losses}L)
+                {filteredLeaderboard[0].winRate.toFixed(0)}% Win Rate ({filteredLeaderboard[0].wins}W - {filteredLeaderboard[0].losses}L)
               </span>
             )}
           </div>
@@ -186,12 +256,14 @@ export default function AnalyticsPage() {
         {/* Leaderboard Table */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden mb-8">
           <div className="p-4 border-b border-slate-800 bg-slate-900/50">
-            <h2 className="text-base font-bold text-white uppercase tracking-wider text-sm">Club Leaderboard (Ranked by Win Rate then Points Diff)</h2>
+            <h2 className="text-base font-bold text-white uppercase tracking-wider text-sm">
+              Club Leaderboard ({genderFilter === 'all' ? 'All Players' : genderFilter === 'male' ? 'Male Rankings' : 'Female Rankings'} - Ranked by Win Rate then Points Diff)
+            </h2>
           </div>
           
-          {leaderboard.length === 0 ? (
+          {filteredLeaderboard.length === 0 ? (
             <div className="text-center py-16 text-slate-500 italic text-sm">
-              No match data available yet. Complete a match on the digital pegboard to see rankings!
+              No match data available for this category yet.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -208,7 +280,7 @@ export default function AnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {leaderboard.map((player, index) => {
+                  {filteredLeaderboard.map((player, index) => {
                     const isPositiveDiff = player.pointDifferential > 0;
                     const isNegativeDiff = player.pointDifferential < 0;
 
@@ -250,11 +322,11 @@ export default function AnalyticsPage() {
           <div className="p-4 border-b border-slate-800 bg-slate-900/50">
             <h2 className="text-base font-bold text-white uppercase tracking-wider text-sm">Match History Log</h2>
           </div>
-          {matches.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 italic text-xs">No match history.</div>
+          {filteredMatches.length === 0 ? (
+            <div className="text-center py-12 text-slate-500 italic text-xs">No match history for this category.</div>
           ) : (
             <div className="divide-y divide-slate-800/60 max-h-[500px] overflow-y-auto">
-              {matches.slice().reverse().map((m) => {
+              {filteredMatches.slice().reverse().map((m) => {
                 const isEditing = editingMatchId === m.id;
 
                 return (

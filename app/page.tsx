@@ -8,6 +8,7 @@ import AttendanceList from '../Components/AttendanceList';
 
 interface Player {
   name: string;
+  gender: 'male' | 'female';
   status: 'available' | 'resting' | 'playing' | 'absent';
   queueOrder: number;
 }
@@ -36,13 +37,10 @@ interface HistorySnapshot {
   matches: MatchRecord[];
 }
 
-// ==========================================
-// HELPER FUNCTIONS (Outside component body)
-// ==========================================
 const extractNextAutoPickGroup = (currentQueueList: string[], needed: number = 4): string[] | null => {
-  if (currentQueueList.length < 8) return null; 
-  const picker = currentQueueList[0];
-  const candidates = currentQueueList.slice(1, 8);
+  if (currentList.length < 8) return null; 
+  const picker = currentList[0];
+  const candidates = currentList.slice(1, 8);
   const randomized = [...candidates].sort(() => 0.5 - Math.random());
   return [picker, ...randomized.slice(0, needed - 1)];
 };
@@ -66,6 +64,7 @@ export default function Home() {
   const [stagedMatch, setStagedMatch] = useState<string[]>([]);
   const [history, setHistory] = useState<HistorySnapshot[]>([]);
   const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerGender, setNewPlayerGender] = useState<'male' | 'female'>('male');
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [matches, setMatches] = useState<MatchRecord[]>([]); 
   
@@ -376,8 +375,9 @@ export default function Home() {
     if (!clean || attendance.some(p => p.name.toLowerCase() === clean.toLowerCase())) return;
     
     saveToHistory();
-    setAttendance(prev => [...prev, { name: clean, status: 'absent', queueOrder: 999 }]); 
+    setAttendance(prev => [...prev, { name: clean, gender: newPlayerGender, status: 'absent', queueOrder: 999 }]); 
     setNewPlayerName('');
+    setNewPlayerGender('male');
   };
 
   const handleActivateCourtSlot = (num: number) => {
@@ -517,39 +517,39 @@ export default function Home() {
     if (savedAttendance) setAttendance(JSON.parse(savedAttendance));
     else {
       setAttendance([
-        { name: 'Adam J', status: 'absent', queueOrder: 999 },
-        { name: 'Rob S', status: 'absent', queueOrder: 999 },
-        { name: 'Dave O', status: 'absent', queueOrder: 999 },
-        { name: 'Dave A', status: 'absent', queueOrder: 999 },
-        { name: 'Stephen L', status: 'absent', queueOrder: 999 },
-        { name: 'Stephen H', status: 'absent', queueOrder: 999 },
-        { name: 'Damien', status: 'absent', queueOrder: 999 },
-        { name: 'Ryan', status: 'absent', queueOrder: 999 },
-        { name: 'Nayab', status: 'absent', queueOrder: 999 },
-        { name: 'Clare', status: 'absent', queueOrder: 999 },
-        { name: 'Dan', status: 'absent', queueOrder: 999 },
-        { name: 'Aniston', status: 'absent', queueOrder: 999 },
-        { name: 'Jebin', status: 'absent', queueOrder: 999 },
-        { name: 'Ash', status: 'absent', queueOrder: 999 },
-        { name: 'Jarek', status: 'absent', queueOrder: 999 },
-        { name: 'Khai', status: 'absent', queueOrder: 999 },
-        { name: 'Esmee', status: 'absent', queueOrder: 999 },
-        { name: 'Colin', status: 'absent', queueOrder: 999 },
-        { name: 'Nigel', status: 'absent', queueOrder: 999 },
-        { name: 'Natalie', status: 'absent', queueOrder: 999 },
-        { name: 'Kev', status: 'absent', queueOrder: 999 },
-        { name: 'Rich', status: 'absent', queueOrder: 999 },
-        { name: 'Tom', status: 'absent', queueOrder: 999 },
-        { name: 'Charles', status: 'absent', queueOrder: 999 },
-        { name: 'Ian', status: 'absent', queueOrder: 999 },
-        { name: 'James', status: 'absent', queueOrder: 999 },
-        { name: 'Jim', status: 'absent', queueOrder: 999 },
-        { name: 'Krishnan', status: 'absent', queueOrder: 999 },
-        { name: 'Celia', status: 'absent', queueOrder: 999 },
-        { name: 'Rojen', status: 'absent', queueOrder: 999 },
-        { name: 'Sam', status: 'absent', queueOrder: 999 },
-        { name: 'Vital', status: 'absent', queueOrder: 999 },
-        { name: 'Adam H', status: 'absent', queueOrder: 999 },
+        { name: 'Adam J', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Rob S', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Dave O', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Dave A', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Stephen L', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Stephen H', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Damien', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Ryan', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Nayab', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Clare', gender: 'female', status: 'absent', queueOrder: 999 },
+        { name: 'Dan', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Aniston', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Jebin', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Ash', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Jarek', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Khai', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Esmee', gender: 'female', status: 'absent', queueOrder: 999 },
+        { name: 'Colin', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Nigel', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Natalie', gender: 'female', status: 'absent', queueOrder: 999 },
+        { name: 'Kev', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Rich', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Tom', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Charles', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Ian', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'James', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Jim', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Krishnan', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Celia', gender: 'female', status: 'absent', queueOrder: 999 },
+        { name: 'Rojen', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Sam', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Vital', gender: 'male', status: 'absent', queueOrder: 999 },
+        { name: 'Adam H', gender: 'male', status: 'absent', queueOrder: 999 },
       ]);
       setOrderCounter(1);
     }
@@ -584,6 +584,14 @@ export default function Home() {
     const interval = setInterval(() => {
       if (!isHydrated || !isAutoActiveRef.current || isProcessingAutoDrive.current) return;
 
+      const extractNextAutoPickGroup = (currentQueueList: string[], needed: number = 4): string[] | null => {
+        if (currentQueueList.length < 8) return null; 
+        const picker = currentQueueList[0];
+        const candidates = currentQueueList.slice(1, 8);
+        const randomized = [...candidates].sort(() => 0.5 - Math.random());
+        return [picker, ...randomized.slice(0, needed - 1)];
+      };
+
       let localAttendance = [...attendanceRef.current];
       let localCourts = [...courtsRef.current];
       let localStaged = [...stagedMatchRef.current];
@@ -593,7 +601,6 @@ export default function Home() {
       if (openCourts.length > 0 && localStaged.length === 4) {
         const target = openCourts[0];
         
-        // 👉 FAIR PAIRING INTERCEPTION (STAGED)
         let finalStagedGroup = [...localStaged];
         if (isFairPairingRef.current) {
           const playersWithSkill = localStaged.map(name => ({
@@ -632,7 +639,6 @@ export default function Home() {
 
         let finalGroup = [...group];
 
-        // 👉 FAIR PAIRING INTERCEPTION (EXTRACTED)
         if (isFairPairingRef.current) {
           const playersWithSkill = group.map(name => ({
             name,
@@ -697,10 +703,10 @@ export default function Home() {
           </div>
           
           <div className="flex items-center gap-3">
-		        <Link href="/analytics" className="bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5">
+            <Link href="/analytics" className="bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5">
               📊 Player Leaderboard
             </Link>
-		  
+      
             <Link href="/analytics/pairs" className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5">
               👥 Pairs Leaderboard
             </Link>
@@ -726,13 +732,49 @@ export default function Home() {
           <div className="lg:col-span-3">
             <div className="border border-slate-800 bg-slate-900 rounded-xl p-4 h-full flex flex-col">
               <h2 className="text-lg font-bold text-white mb-4 pb-2 border-b border-slate-800">Attendance Database</h2>
-              <form onSubmit={addPlayerToMasterRoster} className="flex gap-2 mb-4">
-                <input type="text" value={newPlayerName} onChange={e => setNewPlayerName(e.target.value)} placeholder="Add new member..." className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-sm text-slate-100 flex-grow focus:outline-none focus:border-indigo-500" />
-                <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 rounded-lg">Add</button>
+              
+              <form onSubmit={addPlayerToMasterRoster} className="flex flex-col gap-3 mb-4">
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={newPlayerName} 
+                    onChange={e => setNewPlayerName(e.target.value)} 
+                    placeholder="Add new member..." 
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-sm text-slate-100 flex-grow focus:outline-none focus:border-indigo-500" 
+                  />
+                  <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 rounded-lg cursor-pointer">Add</button>
+                </div>
+                
+                {/* Segmented Gender Toggle (with Person in Square Images) */}
+                <div className="flex bg-slate-950 border border-slate-800 p-1 rounded-lg text-xs font-semibold justify-around">
+                  <button
+                    type="button"
+                    onClick={() => setNewPlayerGender('male')}
+                    className={`flex-1 py-1.5 rounded-md transition-all text-center cursor-pointer flex items-center justify-center gap-1.5 ${
+                      newPlayerGender === 'male'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="text-[10px]">🚹</span> Male
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewPlayerGender('female')}
+                    className={`flex-1 py-1.5 rounded-md transition-all text-center cursor-pointer flex items-center justify-center gap-1.5 ${
+                      newPlayerGender === 'female'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="text-[10px]">🚺</span> Female
+                  </button>
+                </div>
               </form>
               
               <AttendanceList 
                 players={attendance} 
+                onToggleRest={handleToggleRestState} 
                 onToggleAttendance={handleToggleAttendance}
                 onCheckOutAll={handleCheckOutAllMembers}
                 onDeletePlayer={handleDeletePlayer}
@@ -784,14 +826,14 @@ export default function Home() {
                       {stagedMatch.length === 4 && (
                         <button 
                           onClick={() => handleMoveStagedEvenMatch(emptyActiveCourtNumbers[0])}
-                          className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 rounded-lg transition-colors"
+                          className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 rounded-lg transition-colors cursor-pointer"
                         >
                           ⚖️ Send Staged to Court {emptyActiveCourtNumbers[0]} (Fair Pairs)
                         </button>
                       )}
                       <button 
                         onClick={() => handleMoveStagedToCourt(emptyActiveCourtNumbers[0])}
-                        className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs py-2 rounded-lg transition-colors"
+                        className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs py-2 rounded-lg transition-colors cursor-pointer"
                       >
                         ➡️ Send Staged to Court {emptyActiveCourtNumbers[0]} (As Is)
                       </button>
@@ -829,7 +871,7 @@ export default function Home() {
                       <div key={num} className="h-auto">
                         <Court 
                           courtNumber={num} 
-                          players={courtData.players || []} 
+                          players={courtData.players} 
                           status={courtData.status}
                           isFilling={false} 
                           onClearCourt={(winners, losers, score) => handleMatchFinished(num, winners, losers, score)}
@@ -839,7 +881,7 @@ export default function Home() {
                           <div className="mt-2 bg-indigo-950/40 border border-indigo-800/60 rounded-lg p-2 text-center">
                             <button
                               onClick={() => handleDeployEvenMatch(num)}
-                              className="w-full text-xs font-bold text-indigo-300 hover:text-indigo-200 py-1"
+                              className="w-full text-xs font-bold text-indigo-300 hover:text-indigo-200 py-1 cursor-pointer"
                             >
                               ⚖️ Balance 4 Selected into Even Teams
                             </button>
@@ -853,7 +895,7 @@ export default function Home() {
                     <button
                       key={num}
                       onClick={() => handleActivateCourtSlot(num)}
-                      className="h-32 border-2 border-dashed border-slate-800 bg-slate-900/20 hover:bg-slate-900/60 hover:border-slate-700 rounded-xl flex flex-col items-center justify-center text-slate-600 hover:text-slate-400 group transition-all"
+                      className="h-32 border-2 border-dashed border-slate-800 bg-slate-900/20 hover:bg-slate-900/60 hover:border-slate-700 rounded-xl flex flex-col items-center justify-center text-slate-600 hover:text-slate-400 group transition-all cursor-pointer"
                     >
                       <span className="text-2xl font-light mb-1 group-hover:scale-110 transition-transform">+</span>
                       <span className="text-xs font-bold uppercase tracking-wider">Activate Court {num}</span>

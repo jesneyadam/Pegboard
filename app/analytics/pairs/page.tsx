@@ -89,12 +89,13 @@ export default function PairsAnalytics() {
           </div>
           
           <div className="flex items-center gap-3">
+		    <Link href="/" className="bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800 text-xs font-bold px-4 py-2.5 rounded-lg transition-all">
+              🏠 Pegboard
+            </Link>
             <Link href="/analytics" className="bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800 text-xs font-bold px-3 py-2 rounded-lg transition-all">
               📊 Player Leaderboard
             </Link>
-            <Link href="/" className="bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800 text-xs font-bold px-4 py-2.5 rounded-lg transition-all">
-              🏠 Pegboard
-            </Link>
+
           </div>
         </header>
 
