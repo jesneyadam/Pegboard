@@ -775,7 +775,6 @@ export default function Home() {
               
               <AttendanceList 
                 players={attendance} 
-                onToggleRest={handleToggleRestState} 
                 onToggleAttendance={handleToggleAttendance}
                 onCheckOutAll={handleCheckOutAllMembers}
                 onDeletePlayer={handleDeletePlayer}
